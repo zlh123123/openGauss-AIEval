@@ -6,12 +6,9 @@ from psycopg2 import sql
 import os
 import requests
 
-
-
 openai_client = OpenAI(
     api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ["OPENAI_BASE_URL"]
 )
-
 
 db_config = {
     "host": "localhost",
