@@ -6,6 +6,8 @@ from psycopg2 import sql
 import os
 import requests
 
+
+
 openai_client = OpenAI(
     api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ["OPENAI_BASE_URL"]
 )
@@ -21,17 +23,19 @@ db_config = {
 
 class RAG:
     """
-    基于 DeepSeek、BAAI/bge-large-zh-v1.5 和 openGauss 构建的 RAG（检索增强生成）类。
+    基于 DeepSeek、Qwen/Qwen3-Embedding-0.6B 和 openGauss 构建的 RAG（检索增强生成）类。
     """
 
-    def __init__(self, openai_client: OpenAI, db_config: dict):
+    def __init__(
+        self, openai_client: OpenAI, db_config: dict, table_name: str = "rag_table"
+    ):
         self._prepare_openai(openai_client)
-        self._prepare_opengauss(db_config)
+        self._prepare_opengauss(db_config, table_name)
 
     def _emb_text(self, text: str) -> List[float]:
-        """使用 BAAI/bge-large-zh-v1.5 模型通过 API 生成文本的向量嵌入"""
+        """使用 Qwen/Qwen3-Embedding-0.6B 模型通过 API 生成文本的向量嵌入"""
         try:
-            payload = {"model": "BAAI/bge-large-zh-v1.5", "input": text}
+            payload = {"model": "Qwen/Qwen3-Embedding-0.6B", "input": text}
             headers = {
                 "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
                 "Content-Type": "application/json",
@@ -40,7 +44,7 @@ class RAG:
             response = requests.post(
                 SILICONFLOW_BASE_URL, json=payload, headers=headers
             )
-            response.raise_for_status()  # 检查HTTP错误
+            response.raise_for_status()
 
             result = response.json()
             return result["data"][0]["embedding"]
@@ -48,80 +52,50 @@ class RAG:
             print(f"生成嵌入向量时出错：{e}")
             raise e
 
-    def _prepare_openai(
-        self,
-        openai_client: OpenAI,
-        embedding_model: str = "BAAI/bge-large-zh-v1.5",
-        llm_model: str = "deepseek-chat",
-    ):
+    def _prepare_openai(self, openai_client: OpenAI, llm_model: str = "deepseek-chat"):
         """初始化 OpenAI 客户端和模型配置"""
         self.openai_client = openai_client
-        self.embedding_model = embedding_model
         self.llm_model = llm_model
-        self.SYSTEM_PROMPT = """
-            你是一个AI助手。你能够从提供的上下文段落片段中找到问题的答案。
-        """
-        self.USER_PROMPT = """
-            使用以下用<context>标签包围的信息片段来回答用<question>标签包围的问题。
-            <context>
-            {context}
-            </context>
-            <question>
-            {question}
-            </question>
-        """
+        self.SYSTEM_PROMPT = (
+            "你是一个AI助手。你能够从提供的上下文段落片段中找到问题的答案。"
+        )
+        self.USER_PROMPT = """使用以下用<context>标签包围的信息片段来回答用<question>标签包围的问题。
+<context>
+{context}
+</context>
+<question>
+{question}
+</question>"""
 
-    def _check_vector_support(self) -> bool:
-        """检查数据库是否支持向量类型"""
-        try:
-            # 尝试创建一个临时的向量类型测试
-            self.cursor.execute("SELECT typname FROM pg_type WHERE typname = 'vector';")
-            result = self.cursor.fetchone()
-            if result:
-                print("检测到数据库支持 vector 类型")
-                return True
-            else:
-                print("数据库不支持 vector 类型，将使用数组类型")
-                return False
-        except psycopg2.Error as e:
-            print(f"检查向量支持时出错：{e}")
-            self.conn.rollback()
-            return False
-
-    def _prepare_opengauss(self, db_config: dict, table_name: str = "rag_table"):
+    def _prepare_opengauss(self, db_config: dict, table_name: str):
         """初始化 openGauss 数据库连接和表结构"""
         self.db_config = db_config
         self.table_name = table_name
         self.conn = psycopg2.connect(**db_config)
         self.cursor = self.conn.cursor()
 
-        # 创建用户自己的 schema（如果不存在）
+        # 创建 schema
+        self.schema_name = "test_schema"
         try:
             self.cursor.execute("CREATE SCHEMA IF NOT EXISTS test_schema;")
             self.conn.commit()
-            self.schema_name = "test_schema"
             print(f"使用 schema: {self.schema_name}")
-        except psycopg2.Error:
-            # 如果无法创建 schema，使用默认的用户 schema
-            self.schema_name = db_config["user"]
+        except psycopg2.Error as e:
+            print(f"Schema 创建失败，使用默认: {e}")
+            self.schema_name = "public"
             self.conn.rollback()
-            print(f"使用默认用户 schema: {self.schema_name}")
-
-        self.vector_supported = self._check_vector_support()
 
         # 获取嵌入维度并创建表和索引
         print("正在检测向量维度...")
         self.embedding_dim = len(self._emb_text("示例"))
         print(f"向量维度：{self.embedding_dim}")
 
-        self.create_table(self.conn, self.cursor, self.table_name, self.embedding_dim)
-        self.create_index(
-            self.conn, self.cursor, self.table_name, f"idx_{self.table_name}"
-        )
+        self._create_table(self.table_name, self.embedding_dim)
+        self._create_index(self.table_name, f"idx_{self.table_name}")
 
-    def create_table(self, conn, cursor, table_name: str, dim: int):
+    def _create_table(self, table_name: str, dim: int):
         """创建存储文本和向量嵌入的表"""
-        cursor.execute(
+        self.cursor.execute(
             sql.SQL(
                 "CREATE TABLE IF NOT EXISTS {schema}.{table_name} (id BIGINT PRIMARY KEY, text TEXT, embedding vector({dim}));"
             ).format(
@@ -130,12 +104,12 @@ class RAG:
                 dim=sql.Literal(dim),
             )
         )
-        conn.commit()
+        self.conn.commit()
         print(f"表 {self.schema_name}.{table_name} 创建成功！")
 
-    def create_index(self, conn, cursor, table_name: str, index_name: str):
+    def _create_index(self, table_name: str, index_name: str):
         """为向量字段创建 HNSW 索引以提高检索性能"""
-        cursor.execute(
+        self.cursor.execute(
             sql.SQL(
                 "CREATE INDEX IF NOT EXISTS {index_name} ON {schema}.{table_name} USING hnsw (embedding vector_l2_ops);"
             ).format(
@@ -144,15 +118,13 @@ class RAG:
                 table_name=sql.Identifier(table_name),
             )
         )
-        conn.commit()
+        self.conn.commit()
         print(f"索引 {index_name} 创建成功！")
 
     def load(self, texts: List[str]):
-        """
-        将文本数据加载到 openGauss 数据库中。
-        """
+        """将文本数据加载到 openGauss 数据库中"""
         print("开始加载数据...")
-        
+
         # 清空现有数据
         self.cursor.execute(
             sql.SQL("DELETE FROM {schema}.{table_name};").format(
@@ -162,32 +134,24 @@ class RAG:
         )
         self.conn.commit()
         print("已清空现有数据")
-        ids = list(range(len(texts)))
 
-        # 生成嵌入向量
-        embeddings = []
-        for text in tqdm(texts, desc="正在创建向量嵌入"):
+        # 生成嵌入向量并插入数据
+        for i, text in enumerate(tqdm(texts, desc="正在创建向量嵌入")):
             emb = self._emb_text(text)
-            embeddings.append(emb)
-
-        # 准备数据并插入
-        data = list(zip(ids, texts, embeddings))
-        self.cursor.executemany(
-            sql.SQL(
-                "INSERT INTO {schema}.{table_name} (id, text, embedding) VALUES (%s, %s, %s);"
-            ).format(
-                schema=sql.Identifier(self.schema_name),
-                table_name=sql.Identifier(self.table_name),
-            ),
-            data,
-        )
+            self.cursor.execute(
+                sql.SQL(
+                    "INSERT INTO {schema}.{table_name} (id, text, embedding) VALUES (%s, %s, %s);"
+                ).format(
+                    schema=sql.Identifier(self.schema_name),
+                    table_name=sql.Identifier(self.table_name),
+                ),
+                (i, text, emb),
+            )
         self.conn.commit()
         print("数据插入成功！")
 
     def retrieve(self, question: str, top_k: int = 3) -> List[str]:
-        """
-        检索与给定问题最相似的文本数据。
-        """
+        """检索与给定问题最相似的文本数据"""
         query_emb = self._emb_text(question)
 
         # 设置查询参数以优化向量搜索
@@ -213,9 +177,7 @@ class RAG:
         retrieval_top_k: int = 3,
         return_retrieved_text: bool = False,
     ):
-        """
-        基于检索到的知识回答给定的问题。
-        """
+        """基于检索到的知识回答给定的问题"""
         retrieved_texts = self.retrieve(question, top_k=retrieval_top_k)
         user_prompt = self.USER_PROMPT.format(
             context="\n".join(retrieved_texts), question=question
@@ -233,9 +195,7 @@ class RAG:
             return response.choices[0].message.content, retrieved_texts
 
     def __del__(self):
-        """
-        清理数据库连接。
-        """
+        """清理数据库连接"""
         try:
             if hasattr(self, "cursor") and self.cursor:
                 self.cursor.close()

@@ -12,6 +12,9 @@ from deepeval.metrics import (
 from deepeval.test_case import LLMTestCase
 from deepeval import evaluate
 import os
+from evaluate_retriever import evaluate_retriever
+from evaluate_generation import evaluate_generation
+
 # 针对 openGauss 的测试问题和标准答案
 question_list = [
     "openGauss 数据库是什么？",
@@ -51,34 +54,23 @@ def load_sample_data():
     return sample_texts
 
 
-def run_rag_evaluation():
-    """运行完整的RAG系统评估"""
-
-    print("=== 初始化 RAG 系统 ===")
-    # 创建 RAG 实例
+if __name__ == "__main__":
+    # 创建 RAG 实例并加载示例数据
     rag = RAG(openai_client, db_config)
-
-    # 加载示例数据
-    print("=== 加载示例数据 ===")
     sample_texts = load_sample_data()
     rag.load(sample_texts)
 
-    print("=== 生成测试数据 ===")
-    # 运行RAG管道并获取结果
+    # 初始化列表
     contexts_list = []
     answer_list = []
 
-    for question in tqdm(question_list, desc="正在回答问题"):
-        try:
-            answer, contexts = rag.answer(question, return_retrieved_text=True)
-            contexts_list.append(contexts)
-            answer_list.append(answer)
-        except Exception as e:
-            print(f"回答问题 '{question}' 时出错：{e}")
-            contexts_list.append([])
-            answer_list.append("抱歉，无法回答这个问题。")
+    # 生成答案和上下文
+    for question in tqdm(question_list, desc="Answering questions"):
+        answer, contexts = rag.answer(question, return_retrieved_text=True)
+        contexts_list.append(contexts)
+        answer_list.append(answer)
 
-    # 创建数据框
+    # 创建 DataFrame
     df = pd.DataFrame(
         {
             "question": question_list,
@@ -87,105 +79,14 @@ def run_rag_evaluation():
             "ground_truth": ground_truth_list,
         }
     )
-
-    print("=== 测试数据预览 ===")
-    print(df.head())
-
-    # 转换为 Dataset
     rag_results = Dataset.from_pandas(df)
 
-    print("\n=== 评估检索器性能 ===")
-    evaluate_retriever(df)
+    # 运行检索器评估
+    print("Running retriever evaluation...")
+    retriever_result = evaluate_retriever(df)
 
-    print("\n=== 评估生成质量 ===")
-    evaluate_generation(df)
+    # 运行生成评估
+    print("Running generation evaluation...")
+    generation_result = evaluate_generation(df)
 
-    return df, rag_results
-
-
-def evaluate_retriever(df):
-    """评估检索器性能"""
-
-    # 创建检索器评估指标
-    contextual_precision = ContextualPrecisionMetric()
-    contextual_recall = ContextualRecallMetric()
-    contextual_relevancy = ContextualRelevancyMetric()
-
-    # 创建测试用例
-    test_cases = []
-    for index, row in df.iterrows():
-        test_case = LLMTestCase(
-            input=row["question"],
-            actual_output=row["answer"],
-            expected_output=row["ground_truth"],
-            retrieval_context=row["contexts"],
-        )
-        test_cases.append(test_case)
-
-    # 运行评估
-    print("正在评估检索器...")
-    try:
-        result = evaluate(
-            test_cases=test_cases,
-            metrics=[contextual_precision, contextual_recall, contextual_relevancy],
-            
-        )
-        print(result)
-        print("检索器评估完成！")
-        return result
-
-    except Exception as e:
-        print(f"检索器评估失败：{e}")
-        return None
-
-
-def evaluate_generation(df):
-    """评估生成质量"""
-
-    # 创建生成评估指标
-    answer_relevancy = AnswerRelevancyMetric()
-    faithfulness = FaithfulnessMetric()
-
-    # 创建测试用例
-    test_cases = []
-    for index, row in df.iterrows():
-        test_case = LLMTestCase(
-            input=row["question"],
-            actual_output=row["answer"],
-            expected_output=row["ground_truth"],
-            retrieval_context=row["contexts"],
-        )
-        test_cases.append(test_case)
-
-    # 运行评估
-    print("正在评估生成质量...")
-    try:
-        result = evaluate(
-            test_cases=test_cases,
-            metrics=[answer_relevancy, faithfulness],
-            
-        )
-        print(result)
-
-        print("生成质量评估完成！")
-        return result
-
-    except Exception as e:
-        print(f"生成质量评估失败：{e}")
-        return None
-
-
-def save_results(df, filename="rag_evaluation_results.csv"):
-    """保存评估结果"""
-    try:
-        df.to_csv(filename, index=False, encoding="utf-8-sig")
-        print(f"评估结果已保存到：{filename}")
-    except Exception as e:
-        print(f"保存结果失败：{e}")
-
-
-if __name__ == "__main__":
-    print("=== openGauss RAG 系统评估 ===")
-
-    # 运行完整评估
-    df, rag_results = run_rag_evaluation()
+    print("Evaluation completed!")
