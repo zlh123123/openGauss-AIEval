@@ -40,9 +40,7 @@ def test_rag_pipeline():
     """
 
     # 设置文档路径
-    docs_path = (
-        r"D:\openGauss-AIEval\opengauss-docs\content\docs-lite\zh\docs\GettingStarted"
-    )
+    docs_path = "/your/opengauss/docs"
 
     texts = read_markdown_files(docs_path)
 

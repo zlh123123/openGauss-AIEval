@@ -5,20 +5,20 @@ import psycopg2
 from psycopg2 import sql
 import os
 import requests
+from config import DEEPEVAL_API_KEY, SILICONFLOW_API_KEY, DB_CONFIG
 
+# 设置 DeepSeek API 配置（仅用于聊天模型）
+os.environ["OPENAI_API_KEY"] = DEEPEVAL_API_KEY
+os.environ["OPENAI_BASE_URL"] = "https://api.deepseek.com"
 
+# 设置 SiliconFlow API 配置（用于嵌入模型）
+SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1/embeddings"
 
 openai_client = OpenAI(
     api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ["OPENAI_BASE_URL"]
 )
 
-db_config = {
-    "host": "localhost",
-    "port": 8888,
-    "database": "postgres",
-    "user": "test",
-    "password": "Enigma#2025",
-}
+db_config = DB_CONFIG
 
 
 class RAG:

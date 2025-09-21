@@ -13,7 +13,7 @@
 + 已安装涉及的Python库
 
   ```shell
-  pip3 install pandas tqdm psycopg2 requests openai deepeval
+  pip3 install pandas tqdm psycopg2 requests openai deepeval langchain_openai
   ```
 
 
@@ -331,13 +331,135 @@ test_questions = [
 
 ## 4. 检索器评估
 
+在进行评估前，首先要准备一些问题及其真实答案
+
 在评估 LLM 系统中的检索器时，以下几个关键点尤为重要：
 
 - **排名相关性**：检索器是否能有效优先排序相关信息，过滤掉无关数据。
 - **上下文检索能力**：检索器根据输入查询捕获和提取上下文相关信息的能力。
 - **平衡性**：检索器如何在文本块大小和检索范围之间取得平衡，以减少无关内容的干扰。
 
-这些因素共同决定了检索器在优先级排序、上下文捕获及信息呈现方面的整体表现。
+这些因素共同决定了检索器在优先级排序、上下文捕获及信息呈现方面的整体表现。如下的代码即用于评估 LLM 系统的上述三个性能。
+
+```python
+from deepeval.metrics import (
+    ContextualPrecisionMetric,
+    ContextualRecallMetric,
+    ContextualRelevancyMetric,
+)
+from deepeval.test_case import LLMTestCase
+from deepeval import evaluate
+
+
+def evaluate_retriever(df):
+    """评估检索器性能"""
+
+    # 创建检索器评估指标
+    contextual_precision = ContextualPrecisionMetric()
+    contextual_recall = ContextualRecallMetric()
+    contextual_relevancy = ContextualRelevancyMetric()
+
+    # 创建测试用例
+    test_cases = []
+    for index, row in df.iterrows():
+        test_case = LLMTestCase(
+            input=row["question"],
+            actual_output=row["answer"],
+            expected_output=row["ground_truth"],
+            retrieval_context=row["contexts"],
+        )
+        test_cases.append(test_case)
+
+    # 运行评估
+    try:
+        result = evaluate(
+            test_cases=test_cases,
+            metrics=[contextual_precision, contextual_recall, contextual_relevancy],
+        )
+        return result
+
+    except Exception as e:
+        print(f"检索器评估失败：{e}")
+        return None
+```
+
+> 由于Deepeval默认使用Chatgpt模型，更换其他模型API或本地模型可参考[更换LLM模型](https://deepeval.com/guides/guides-using-custom-llms)。在本例中提供一种将DeepSeek作为Deepeval评估模型的方法，更适合国内用户使用。
+
+```python
+from deepeval.metrics import (
+    ContextualPrecisionMetric,
+    ContextualRecallMetric,
+    ContextualRelevancyMetric,
+)
+from deepeval.test_case import LLMTestCase
+from deepeval import evaluate
+from langchain_openai import ChatOpenAI
+from deepeval.models.base_model import DeepEvalBaseLLM
+
+
+class DeepSeekLLM(DeepEvalBaseLLM):
+    def __init__(self, model_name="deepseek-chat", api_key="your_deepseek_api_key"):
+        self.model = ChatOpenAI(
+            model=model_name,
+            openai_api_key=api_key,
+            base_url="https://api.deepseek.com/v1",  # DeepSeek API 端点
+        )
+
+    def load_model(self):
+        return self.model
+
+    def generate(self, prompt: str) -> str:
+        chat_model = self.load_model()
+        return chat_model.invoke(prompt).content
+
+    async def a_generate(self, prompt: str) -> str:
+        chat_model = self.load_model()
+        res = await chat_model.ainvoke(prompt)
+        return res.content
+
+    def get_model_name(self):
+        return "DeepSeek Model"
+
+
+def evaluate_retriever_ds(df):
+    """评估检索器性能"""
+
+    custom_llm = DeepSeekLLM(api_key="your_deepseek_api_key")
+
+    # 创建检索器评估指标
+    contextual_precision = ContextualPrecisionMetric(model=custom_llm)
+    contextual_recall = ContextualRecallMetric(model=custom_llm)
+    contextual_relevancy = ContextualRelevancyMetric(model=custom_llm)
+
+    # 创建测试用例
+    test_cases = []
+    for index, row in df.iterrows():
+        test_case = LLMTestCase(
+            input=row["question"],
+            actual_output=row["answer"],
+            expected_output=row["ground_truth"],
+            retrieval_context=row["contexts"],
+        )
+        test_cases.append(test_case)
+
+    # 运行评估
+    try:
+        result = evaluate(
+            test_cases=test_cases,
+            metrics=[contextual_precision, contextual_recall, contextual_relevancy],
+        )
+        return result
+
+    except Exception as e:
+        print(f"检索器评估失败：{e}")
+        return None
+
+```
+检索器的评估流程如下图所示。
+
+![](figures/deepeval/%E6%A3%80%E7%B4%A2.png)
+
+![](figures/deepeval/%E6%A3%80%E7%B4%A2%E7%BB%93%E6%9E%9C.png)
 
 ## 5. 生成器评估
 
@@ -347,3 +469,111 @@ test_questions = [
 - **忠实性**：衡量生成内容的准确性，确保输出信息与事实一致，避免出现幻觉或矛盾，并与检索上下文中的事实信息保持一致。
 
 这两个方面共同确保了生成内容的可靠性和相关性。
+
+```python
+from deepeval.metrics import (
+    AnswerRelevancyMetric,
+    FaithfulnessMetric,
+)
+from deepeval.test_case import LLMTestCase
+from deepeval import evaluate
+
+
+def evaluate_generation(df):
+    """评估生成质量"""
+
+    # 创建生成评估指标
+    answer_relevancy = AnswerRelevancyMetric()
+    faithfulness = FaithfulnessMetric()
+
+    # 创建测试用例
+    test_cases = []
+    for index, row in df.iterrows():
+        test_case = LLMTestCase(
+            input=row["question"],
+            actual_output=row["answer"],
+            expected_output=row["ground_truth"],
+            retrieval_context=row["contexts"],
+        )
+        test_cases.append(test_case)
+    # 运行评估
+    try:
+        result = evaluate(
+            test_cases=test_cases,
+            metrics=[answer_relevancy, faithfulness],
+        )
+        return result
+
+    except Exception as e:
+        print(f"生成质量评估失败：{e}")
+        return None
+
+```
+
+> 由于Deepeval默认使用Chatgpt模型，更换其他模型API或本地模型可参考[更换LLM模型](https://deepeval.com/guides/guides-using-custom-llms)。在本例中提供一种将DeepSeek作为Deepeval评估模型的方法，更适合国内用户使用。
+
+```python
+from deepeval.metrics import (
+    AnswerRelevancyMetric,
+    FaithfulnessMetric,
+)
+from deepeval.test_case import LLMTestCase
+from deepeval import evaluate
+from langchain_openai import ChatOpenAI
+from deepeval.models.base_model import DeepEvalBaseLLM
+
+
+class DeepSeekLLM(DeepEvalBaseLLM):
+    def __init__(self, model_name="deepseek-chat", api_key="your_deepseek_api_key"):
+        self.model = ChatOpenAI(
+            model=model_name,
+            openai_api_key=api_key,
+            base_url="https://api.deepseek.com/v1",  
+        )
+
+    def load_model(self):
+        return self.model
+
+    def generate(self, prompt: str) -> str:
+        chat_model = self.load_model()
+        return chat_model.invoke(prompt).content
+
+    async def a_generate(self, prompt: str) -> str:
+        chat_model = self.load_model()
+        res = await chat_model.ainvoke(prompt)
+        return res.content
+
+    def get_model_name(self):
+        return "DeepSeek Model"
+
+def evaluate_generation_ds(df):
+
+    custom_llm = DeepSeekLLM(api_key="your_deepseek_api_key")
+    answer_relevancy = AnswerRelevancyMetric(model=custom_llm)
+    faithfulness = FaithfulnessMetric(model=custom_llm)
+
+    test_cases = []
+    for index, row in df.iterrows():
+        test_case = LLMTestCase(
+            input=row["question"],
+            actual_output=row["answer"],
+            expected_output=row["ground_truth"],
+            retrieval_context=row["contexts"],
+        )
+        test_cases.append(test_case)
+
+    try:
+        result = evaluate(
+            test_cases=test_cases,
+            metrics=[answer_relevancy, faithfulness],
+        )
+        return result
+    except Exception as e:
+        print(f"生成质量评估失败：{e}")
+        return None![](figures/deepeval/%E7%94%9F%E6%88%90.png)
+```
+生成器的评估流程如下图所示。
+
+![](figures/deepeval/%E7%94%9F%E6%88%90.png)
+
+![](figures/deepeval/%E7%94%9F%E6%88%90%E7%BB%93%E6%9E%9C.png)

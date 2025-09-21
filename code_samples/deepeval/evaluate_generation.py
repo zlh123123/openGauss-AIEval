@@ -25,16 +25,12 @@ def evaluate_generation(df):
         test_cases.append(test_case)
 
     # 运行评估
-    print("正在评估生成质量...")
+
     try:
         result = evaluate(
             test_cases=test_cases,
             metrics=[answer_relevancy, faithfulness],
-            print_results=False,  # Change to True to see detailed metric results
         )
-        print(result)
-
-        print("生成质量评估完成！")
         return result
 
     except Exception as e:

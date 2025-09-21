@@ -8,3 +8,5 @@ venv/
 
 env.txt
 opengauss-docs/
+.deepeval/
+.conda/

@@ -27,15 +27,11 @@ def evaluate_retriever(df):
         test_cases.append(test_case)
 
     # 运行评估
-    print("正在评估检索器...")
     try:
         result = evaluate(
             test_cases=test_cases,
             metrics=[contextual_precision, contextual_recall, contextual_relevancy],
-            print_results=False,  # Change to True to see detailed metric results
         )
-        print(result)
-        print("检索器评估完成！")
         return result
 
     except Exception as e:

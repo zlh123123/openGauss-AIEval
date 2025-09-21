@@ -14,6 +14,9 @@ from deepeval import evaluate
 import os
 from evaluate_retriever import evaluate_retriever
 from evaluate_generation import evaluate_generation
+from evaluate_generation_ds import evaluate_generation_ds
+from evaluate_retriever_ds import evaluate_retriever_ds
+
 
 # 针对 openGauss 的测试问题和标准答案
 question_list = [
@@ -81,12 +84,12 @@ if __name__ == "__main__":
     )
     rag_results = Dataset.from_pandas(df)
 
-    # 运行检索器评估
-    print("Running retriever evaluation...")
-    retriever_result = evaluate_retriever(df)
+    # 评估检索器
+    # retriever_result = evaluate_retriever(df)
+    retriever_result = evaluate_retriever_ds(df)
 
-    # 运行生成评估
-    print("Running generation evaluation...")
-    generation_result = evaluate_generation(df)
+    # 评估生成质量
+    # generation_result = evaluate_generation(df)
+    generation_result = evaluate_generation_ds(df)
 
     print("Evaluation completed!")
