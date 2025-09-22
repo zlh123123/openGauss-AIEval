@@ -13,7 +13,7 @@
 + 已安装涉及的Python库
 
   ```shell
-  pip3 install pandas tqdm psycopg2 requests openai arize-phoenix
+  pip3 install pandas tqdm psycopg2 requests openai arize-phoenix openinference-instrumentation-openai
   ```
 
 > 若出现报错`ImportError: cannot import name 'LoopSetupType' from 'uvicorn.config'`，可参考[Issue #9569 · Arize-ai/phoenix](https://github.com/Arize-ai/phoenix/issues/9569)，将`uvicorn`降版本即可。经测试`uvicorn`为`0.34.0`可用，即`pip install uvicorn==0.34.0`。
