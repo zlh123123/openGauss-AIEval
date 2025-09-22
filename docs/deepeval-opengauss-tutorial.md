@@ -20,14 +20,19 @@
 在本例程中，我们使用DeepSeek作为LLM，因此需要将配置文件中环境变量`OPENAI_API_KEY`设置为DeepSeek API Key；此外，本例中使用的嵌入模型为硅基流动平台的`Qwen/Qwen3-Embedding-0.6B`模型，故还需要设置硅基流动的API Key，嵌入模型选择参考[嵌入模型](https://docs.opengauss.org/zh/docs/latest/docs/DataVec/embedding-bgem3.html)。
 
 ```python
-import os
-# 设置 DeepSeek API 配置（仅用于聊天模型）
-os.environ["OPENAI_API_KEY"] = "sk-xxxxxxxxxx"	# 您的 DeepSeek API Key
-os.environ["OPENAI_BASE_URL"] = "https://api.deepseek.com"  # DeepSeek API 基础URL
+# DeepSeek API key
+DEEPEVAL_API_KEY = "sk-xxxxxxxxxx"
 
-# 设置 SiliconFlow API 配置（用于嵌入模型）
-SILICONFLOW_API_KEY = "sk-xxxxxxxxxx"  # 替换为您的 SiliconFlow API Key
-SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1/embeddings"
+# SiliconFlow API key
+SILICONFLOW_API_KEY = "sk-xxxxxxxxxx"
+
+DB_CONFIG = {
+    "host": "localhost",  # 数据库服务器地址
+    "port": 8888,  # 数据库服务端口号
+    "database": "YourDbName",  # 要连接的数据库名称
+    "user": "YourUserName",  # 数据库用户名
+    "password": "YourUserPassword",  # 数据库密码
+}
 ```
 
 ## 2. 定义 RAG 管道
@@ -41,7 +46,7 @@ SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1/embeddings"
 ```python
 class RAG:
     """
-    基于 DeepSeek、BAAI/bge-large-zh-v1.5 和 openGauss 构建的 RAG 类。
+    基于 DeepSeek、Qwen/Qwen3-Embedding-0.6B 和 openGauss 构建的 RAG 类。
     """
 
     def __init__(
@@ -51,9 +56,9 @@ class RAG:
         self._prepare_opengauss(db_config, table_name)
 
     def _emb_text(self, text: str) -> List[float]:
-        """使用 BAAI/bge-large-zh-v1.5 模型通过 API 生成文本的向量嵌入"""
+        """使用 Qwen/Qwen3-Embedding-0.6B 模型通过 API 生成文本的向量嵌入"""
         try:
-            payload = {"model": "BAAI/bge-large-zh-v1.5", "input": text}
+            payload = {"model": "Qwen/Qwen3-Embedding-0.6B", "input": text}
             headers = {
                 "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
                 "Content-Type": "application/json",
@@ -232,13 +237,7 @@ openai_client = OpenAI(
     api_key=os.environ["OPENAI_API_KEY"], base_url=os.environ["OPENAI_BASE_URL"]
 )
 
-db_config = {
-    "host": "localhost",       		# 数据库服务器地址
-    "port": 8888,              		# 数据库服务端口号
-    "database": "YourDbName",    	# 要连接的数据库名称
-    "user": "YourUserName",         # 数据库用户名
-    "password": "YourUserPassword", # 数据库密码
-}
+db_config = DB_CONFIG
 
 # 创建 RAG 实例
 rag = RAG(openai_client, db_config)
