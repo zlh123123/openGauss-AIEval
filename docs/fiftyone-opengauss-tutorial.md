@@ -46,7 +46,7 @@ DB_CONFIG = {
 
 ## 2. openGauss后端服务创建
 
-为将openGauss DataVec作为Fiftyone的后端服务，需要注册`OpenGaussSimilarityConfig`、`OpenGaussSimilarity`、`OpenGaussSimilarityIndex`三个类，代码如下：
+为将openGauss DataVec作为Fiftyone的后端服务，需要注册`OpenGaussSimilarityConfig`、`OpenGaussSimilarity`、`OpenGaussSimilarityIndex`三个类，详细注册过程可参考[FiftyOne Brain Similarity](https://docs.voxel51.com/brain.html#similarity-backends)，代码如下。
 
 ```python
 import logging
@@ -765,3 +765,70 @@ class OpenGaussSimilarityIndex(SimilarityIndex):
 
 ```
 
+## 3. 数据集加载与嵌入计算
+
+在本例中我们使用Fiftyone的样本图像集进行演示，若需要使用自己的数据集，可参考[Importing data into FiftyOne](https://docs.voxel51.com/user_guide/import_datasets.html)。
+
+```python
+# 加载数据集
+print("Loading dataset...")
+dataset = foz.load_zoo_dataset("quickstart")
+print(f"Loaded {len(dataset)} samples")
+
+# 创建openGauss相似性索引
+print("Creating similarity index...")
+opengauss_index = fob.compute_similarity(
+    dataset,
+    brain_key="opengauss_index",
+    backend="opengauss",
+    embeddings="clip",  
+    metric="cosine",  # 距离度量
+    table_name="quickstart_vectors",  # openGauss表名
+)
+print("Similarity index created successfully!")
+```
+
+```
+Loading dataset...
+Dataset already downloaded
+You are running the oldest supported major version of MongoDB. Please refer to https://deprecation.voxel51.com for deprecation notices. You 
+can suppress this exception by setting your `database_validation` config parameter to `False`. See https://docs.voxel51.com/user_guide/config.html#configuring-a-mongodb-connection for more information
+Loading 'quickstart'
+ 100% |███████████████████████████████████████████████████████████████████| 200/200 [3.5s elapsed, 0s remaining, 57.3 samples/s]      
+Dataset 'quickstart' created
+Loaded 200 samples
+Creating similarity index...
+Computing embeddings...
+ 100% |███████████████████████████████████████████████████████████████████| 200/200 [11.4s elapsed, 0s remaining, 18.0 samples/s]      
+Similarity index created successfully!
+```
+
+## 4. 视觉相似性搜索
+
+现在，我们可以使用 openGauss 相似性索引对数据集进行视觉相似性搜索。同时也可以对结果进行可视化。
+
+```python
+# 执行相似性搜索
+print("Performing similarity search...")
+query_sample = dataset.first()
+print(f"Query sample ID: {query_sample.id}")
+# print(query_sample)
+
+similar_view = dataset.sort_by_similarity(
+    query_sample.id, brain_key="opengauss_index", k=10
+)
+
+print(f"Found {len(similar_view)} similar images")
+
+# 显示前几个相似样本的信息
+for i, sample in enumerate(similar_view.limit(5)):
+    print(f"  Similar sample {i+1}: {sample.id}")
+
+# 可视化结果
+session = fo.launch_app(similar_view)
+session.wait()
+```
+
+![](figures/fiftyone/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%B1%95%E7%A4%BA.png)
+
+![](figures/fiftyone/%E4%BB%AA%E8%A1%A8%E7%9B%98.png)
