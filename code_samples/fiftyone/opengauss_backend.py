@@ -1,54 +1,3 @@
-# openGauss 向量数据库与 FiftyOne 的数据集管理与可视化最佳实践
-
-FiftyOne 是一个用于构建高质量数据集和计算机视觉模型的开源工具，结合 openGauss 向量数据库的高效向量存储与检索能力，可以显著增强视觉搜索功能。
-
-本文将指导您将 openGauss DataVec 的相似性搜索能力集成到 FiftyOne 中，实现对图像数据集的高效视觉搜索。**通过本文，您将掌握在 openGauss 中创建向量索引、在 FiftyOne 中加载数据集并生成嵌入、执行相似性搜索以及管理搜索索引的最佳实践**，从而构建强大的视觉搜索应用。
-
-## 1. 环境准备
-
-+ 已部署 7.0.0-RC1 及以上版本的openGauss实例，容器部署参考[容器镜像安装](https://docs.opengauss.org/zh/docs/latest-lite/docs/InstallationGuide/容器镜像安装.html)
-
-+ 已安装 3.10 及以上版本的Python环境
-
-+ 已安装涉及的Python库
-
-  ```shell
-  pip3 install tqdm psycopg2 fiftyone torch torchvision clip
-  ```
-
-
-在本例中，我们需要将openGauss DataVec注册为Fiftyone的相似性后端，即在`~/.fiftyone/brain_config.json`配置文件中添加：
-
-```json
-{
-    "similarity_backends": {
-        "opengauss": {
-            "config_cls": "opengauss_backend.OpenGaussSimilarityConfig"
-        }
-    }
-}
-```
-
-> 该文件在Windows下的路径为`C:\Users\<用户名>\.fiftyone\brain_config.json`，若不存在可手动创建。
-
-同时，需要在配置文件中设置已启动的openGauss数据库服务的相关配置。
-
-```python
-# openGauss数据库配置
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 8888,
-    "database": "YourDbName",
-    "user": "YourUserName",
-    "password": "YourUserPassword",
-}
-```
-
-## 2. openGauss后端服务创建
-
-为将openGauss DataVec作为Fiftyone的后端服务，需要注册`OpenGaussSimilarityConfig`、`OpenGaussSimilarity`、`OpenGaussSimilarityIndex`三个类，代码如下：
-
-```python
 import logging
 import numpy as np
 import psycopg2
@@ -762,6 +711,3 @@ class OpenGaussSimilarityIndex(SimilarityIndex):
     def _from_dict(cls, d, samples, config, brain_key):
         """从字典创建实例"""
         return cls(samples, config, brain_key)
-
-```
-
